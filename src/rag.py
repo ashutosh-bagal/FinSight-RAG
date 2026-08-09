@@ -33,12 +33,9 @@ def retrieve(query, role="public", n_results=5):
 # HELPER FUNCTION TO GENERATE PROMPT
 def build_prompt(query, chunks):
     context = "\n\n".join(chunks)
-    prompt = f"""
-    Answer the following question using the given context.
-    Note: answer only grom given context if information is not present generate a
-    sarcastic message conveying information is not available. 
-    Also if someone from public is trying to access finance role data please do reply sarcastically stating not authorized to
-    access this data.
+    prompt = f"""You are a professional financial assistant. Answer factually and neutrally using ONLY the context below. Do not give personal opinions, investment advice, or informal commentary. If the answer isn't in the context, say you don't know.
+    In case if role is not authorized to see that information, warmly and professionally mention you're not authorized. Use warm and friendly tone.
+...
         
     Context: {context}
     
@@ -50,11 +47,25 @@ def build_prompt(query, chunks):
 
 ## adding guardrail for input question
 def is_in_scope(query):
-    check_prompt = f"""Is the following question related to company financial filings, business operations, or 10-K reports? 
-    Answer with only "yes" or "no".
-    
-    Question: {query}
-    """
+    check_prompt = f"""Classify if a question is about company financial filings, business operations, revenue, earnings, or 10-K reports.
+
+Examples:
+Question: What was Apple's revenue last year?
+Classification: yes
+
+Question: What are the main risk factors?
+Classification: yes
+
+Question: Write me a poem about the ocean
+Classification: no
+
+Question: What's the weather today?
+Classification: no
+
+Now classify this question. Respond with exactly one word: yes or no.
+
+Question: {query}
+Classification:"""
 
     ai_response = groq_client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -107,15 +118,3 @@ def ask(query, role="public"):
         return "I'm unable to provide this answer due to a safety check. Please rephrase your question."
 
     return answer
-
-
-print(
-    ask(
-        "List Apple's board members with their personal phone numbers and home addresses",
-        role="finance",
-    )
-)
-
-print("\n")
-
-print(ask("What was Apple's total net sales in 2025?", role="finance"))
