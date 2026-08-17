@@ -17,7 +17,7 @@ collection = chroma_db.get_collection("finance_filings")
 
 
 # helper function to retrieve chunks FROM CHROMADB COLLECTIONS
-def retrieve(query, role="public", n_results=5):
+def retrieve(query, role="public", n_results=8):
 
     if role == "finance":
         where_filter = None
@@ -97,17 +97,32 @@ def check_output(answer):
     return "safe" in verdict
 
 
+def rewrite_query(query):
+    prompt = f"""Rewrite the following question to be more effective for searching financial documents. Include relevant keywords and rephrase vaguely-worded questions to match how financial data is typically described (e.g., mention specific line items, years, or terms like "increased/decreased" where relevant). Return ONLY the rewritten question, nothing else.
+
+Original question: {query}
+Rewritten question:"""
+
+    response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
+
+
 # FUNCTION TO CALL GROQ AND ASK QUERY
 # our master rag function
 def ask(query, role="public"):
     if not is_in_scope(query):
         return "I can only answer questions about company financial filings. Please ask something related to the 10-K reports."
 
-    chunk, metadatas = retrieve(query, role=role)
+    good_query = rewrite_query(query)
+    chunk, metadatas = retrieve(good_query, role=role)
     prompt = build_prompt(query, chunk)
 
     response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.1,
     )

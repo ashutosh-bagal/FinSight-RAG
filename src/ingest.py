@@ -66,10 +66,3 @@ collection.add(
     metadatas=metadata,
     ids=ids,
 )
-
-# print(f"Stored {collection.count()} chunks in ChromaDB")
-
-results = collection.query(
-    query_texts=["What are Apple's main risk factors?"], n_results=2
-)
-print(results["documents"])
