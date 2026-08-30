@@ -68,7 +68,7 @@ Question: {query}
 Classification:"""
 
     ai_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-20b",
         messages=[{"role": "user", "content": check_prompt}],
         temperature=0,
     )
@@ -88,7 +88,7 @@ def check_output(answer):
     """
 
     ai_response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-20b",
         messages=[{"role": "user", "content": output_valid_prompt}],
         temperature=0,
     )
@@ -98,24 +98,43 @@ def check_output(answer):
 
 
 def rewrite_query(query):
-    prompt = f"""Rewrite the following question to be more effective for searching financial documents. Include relevant keywords and rephrase vaguely-worded questions to match how financial data is typically described (e.g., mention specific line items, years, or terms like "increased/decreased" where relevant). Return ONLY the rewritten question, nothing else.
+    rewrite_prompt = f"""Decide if this question needs rewriting for better document search. Keep clear factual questions AS-IS. Only rewrite if the phrasing is too casual/vague to match formal financial document language.
 
-Original question: {query}
-Rewritten question:"""
+Examples:
+Question: What products does Apple sell?
+Rewritten: What products does Apple sell?
+
+Question: How much did Apple spend on research?
+Rewritten: What was Apple's research and development (R&D) expense?
+
+Question: What was Apple's R&D spending in fiscal year 2025?
+Rewritten: What was Apple's research and development (R&D) expense in fiscal year 2025?
+
+Question: What are Amazon's risk factors?
+Rewritten: What are Amazon's risk factors?
+
+Now handle this question. Return ONLY the rewritten (or unchanged) question, nothing else.
+
+Question: {query}
+Rewritten:"""
 
     response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
+        model="openai/gpt-oss-20b",
+        messages=[{"role": "user", "content": rewrite_prompt}],
         temperature=0,
     )
-    return response.choices[0].message.content.strip()
+    rewritten = response.choices[0].message.content.strip()
+    return rewritten
 
 
 # FUNCTION TO CALL GROQ AND ASK QUERY
 # our master rag function
-def ask(query, role="public"):
+def ask_with_context(query, role="public"):
     if not is_in_scope(query):
-        return "I can only answer questions about company financial filings. Please ask something related to the 10-K reports."
+        return (
+            "I can only answer questions about company financial filings. Please ask something related to the 10-K reports.",
+            [],
+        )
 
     good_query = rewrite_query(query)
     chunk, metadatas = retrieve(good_query, role=role)
@@ -130,6 +149,14 @@ def ask(query, role="public"):
     answer = response.choices[0].message.content
 
     if not check_output(answer):
-        return "I'm unable to provide this answer due to a safety check. Please rephrase your question."
+        return (
+            "I'm unable to provide this answer due to a safety check. Please rephrase your question.",
+            chunk,
+        )
 
+    return answer, chunk
+
+
+def ask(query, role="public"):
+    answer, _ = ask_with_context(query, role)
     return answer

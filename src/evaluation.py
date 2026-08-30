@@ -1,3 +1,5 @@
+import os
+
 from pathlib import Path
 from datasets import Dataset
 from ragas import evaluate
@@ -8,11 +10,13 @@ from ragas.metrics import (
     answer_relevancy,
 )
 from eval_set import eval_set
-from rag import ask, retrieve
+from rag import ask, retrieve, ask_with_context
 from langchain_groq import ChatGroq
 from ragas.llms import LangchainLLMWrapper
-import os
+from langchain_openai import ChatOpenAI
+from ragas.run_config import RunConfig
 from ragas.embeddings import LangchainEmbeddingsWrapper
+
 
 # from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -55,8 +59,7 @@ for item in eval_set:
     role = item["role"]
     ground_truth = item["ground_truth"]
 
-    chunks, metadata = retrieve(question, role)
-    answer = ask(question, role)
+    answer, chunks = ask_with_context(question, role)
 
     results.append(
         {
@@ -77,17 +80,22 @@ output_path.write_text(report, encoding="utf-8")
 
 ragas_data = Dataset.from_list(results)
 
-groq_llm = ChatGroq(model="openai/gpt-oss-20b", api_key=os.getenv("GROQ_API_KEY"))
-ragas_llm = LangchainLLMWrapper(groq_llm)
+openai_llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
+ragas_llm = LangchainLLMWrapper(openai_llm)
+
+rate_friendly_config = RunConfig(
+    timeout=300, max_retries=15, max_wait=90, max_workers=8, log_tenacity=True
+)
 
 hf_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 ragas_embeddings = LangchainEmbeddingsWrapper(hf_embeddings)
 
 scores = evaluate(
     ragas_data,
-    metrics=[context_precision, context_recall],
+    metrics=[context_precision, context_recall, faithfulness, answer_relevancy],
     llm=ragas_llm,
     embeddings=ragas_embeddings,
+    run_config=rate_friendly_config,
 )
 
 df = scores.to_pandas()
